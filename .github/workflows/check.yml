@@ -1,0 +1,63 @@
+name: Controllo interpelli
+
+on:
+  schedule:
+    # Ogni 10 minuti (GitHub può ritardare l'avvio di qualche minuto)
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+# Serve per committare data/seen.json e public/interpelli.json
+permissions:
+  contents: write
+
+# Evita esecuzioni sovrapposte (e quindi push in conflitto / email doppie)
+concurrency:
+  group: check-interpelli
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installa dipendenze
+        run: pip install -r requirements.txt
+
+      - name: Controlla il feed e invia l'email
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python check.py
+
+      # Eseguito anche se check.py fallisce (ma non se il run è annullato):
+      # se l'email è partita e lo stato è stato scritto, va committato per non
+      # reinviare lo stesso avviso al giro successivo.
+      - name: Commit e push dei dati (solo se cambiati)
+        if: ${{ !cancelled() }}
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data/seen.json public/interpelli.json
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica ai dati."
+            exit 0
+          fi
+          # [skip ci] + i commit fatti con GITHUB_TOKEN non avviano altri workflow
+          git commit -m "chore: aggiorna dati interpelli [skip ci]"
+          for i in 1 2 3; do
+            git pull --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            echo "Push fallito (tentativo $i), riprovo..."
+            sleep 5
+          done
+          echo "Push non riuscito" >&2
+          exit 1

@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# File temporanei di check.py
+*.tmp
+
+# Segreti locali (non committare mai)
+.env
+.env.*
+
+# Node / Vite
+node_modules/
+web/dist/
+web/.vite/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
